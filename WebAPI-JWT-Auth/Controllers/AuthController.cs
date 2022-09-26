@@ -12,18 +12,18 @@ namespace WebAPI_JWT_Auth.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
-        public static User user = new User();
+        public static List<User> users = new List<User>();
         private readonly IConfiguration _configuration;
         private readonly IUserService _userService;
 
-        public AuthController(IConfiguration configuration, IUserService userService) 
+        public AuthController(IConfiguration configuration, IUserService userService)
         {
             _configuration = configuration;
             _userService = userService;
         }
 
-        [HttpGet,Authorize]
-        public  ActionResult<string> GetMe()
+        [HttpGet, Authorize]
+        public ActionResult<string> GetMe()
         {
             var userName = _userService.GetMyName();
 
@@ -31,13 +31,24 @@ namespace WebAPI_JWT_Auth.Controllers
         }
 
         [HttpPost("register")]
-        public async Task<ActionResult<User>> Register(UserDTO request) 
+        public async Task<ActionResult<User>> Register(UserDTO request)
         {
+            var foundUser = users.Find(u => u.UserName == request.UserName);
+            if (foundUser != null)
+            {
+                return BadRequest("User name already exists.");
+            }
+
             CreatePasswordHash(request.Password, out byte[] passwordHash, out byte[] passwordSalt);
 
+            var user = new User();
+            var indexId = users.Count() - 1;
+            user.Id = indexId < 0 ? 1 : users[indexId].Id + 1;
             user.UserName = request.UserName;
             user.PasswordHash = passwordHash;
             user.PasswordSalt = passwordSalt;
+
+            users.Add(user);
 
             return Ok(user);
         }
@@ -45,21 +56,69 @@ namespace WebAPI_JWT_Auth.Controllers
         [HttpPost("login")]
         public async Task<ActionResult<string>> Login(UserDTO request)
         {
-            if (user.UserName != request.UserName)
+            var foundUser = users.Find(u => u.UserName == request.UserName);
+            if (foundUser == null)
             {
                 return BadRequest("User not found.");
             }
 
-            if (!VerifyPasswordHash(request.Password,user.PasswordHash,user.PasswordSalt))
+            if (!VerifyPasswordHash(request.Password, foundUser.PasswordHash, foundUser.PasswordSalt))
             {
                 return BadRequest("Wrong password.");
             }
 
-            string token = CreateToken(user);
+            string token = CreateToken(foundUser);
 
             return Ok(token);
         }
 
+        [HttpGet("userbyid/{id}")]
+        public async Task<ActionResult<User>> UserById(int id)
+        {
+            var foundUser = users.Find(u => u.Id == id);
+            if (foundUser == null)
+            {
+                return BadRequest("User not found.");
+            }
+            return Ok(foundUser);
+        }
+
+        [HttpPut("useredit")]
+        public async Task<ActionResult<User>> UserEdit(UserDTO user)
+        {
+            var foundUser = users.Find(u => u.Id == user.Id);
+            if (foundUser == null)
+            {
+                return BadRequest("User not found.");
+            }
+
+            CreatePasswordHash(user.Password, out byte[] passwordHash, out byte[] passwordSalt);
+
+            foundUser.UserName = user.UserName;
+            foundUser.PasswordHash = passwordHash;
+            foundUser.PasswordSalt = passwordSalt;
+
+            return Ok(foundUser);
+        }
+
+        [HttpDelete("userdelete/{id}")]
+        public async Task<ActionResult<object>> UserDelete(int id)
+        {
+            var foundUser = users.Find(u => u.Id == id);
+            if (foundUser == null)
+            {
+                return BadRequest("User not found.");
+            }
+
+            users.Remove(foundUser);
+            return Ok(new { msg = "User Deleted.", user = foundUser });
+        }
+
+        [HttpGet("userslist")]
+        public async Task<ActionResult<List<User>>> UsersList()
+        {
+            return Ok(users);
+        }
         private string CreateToken(User user)
         {
             List<Claim> claims = new List<Claim>
@@ -84,7 +143,7 @@ namespace WebAPI_JWT_Auth.Controllers
             return jwt;
         }
 
-        private void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordSalt) 
+        private void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordSalt)
         {
             using (var hmac = new HMACSHA512())
             {
@@ -101,5 +160,7 @@ namespace WebAPI_JWT_Auth.Controllers
                 return computedHash.SequenceEqual(passwordHash);
             }
         }
+
+
     }
 }
