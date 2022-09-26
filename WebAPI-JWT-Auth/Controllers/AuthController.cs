@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -12,14 +13,15 @@ namespace WebAPI_JWT_Auth.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
-        public static List<User> users = new List<User>();
         private readonly IConfiguration _configuration;
         private readonly IUserService _userService;
+        private readonly DataContext _dataContext;
 
-        public AuthController(IConfiguration configuration, IUserService userService)
+        public AuthController(IConfiguration configuration, IUserService userService, DataContext dataContext)
         {
             _configuration = configuration;
             _userService = userService;
+            _dataContext = dataContext;
         }
 
         [HttpGet, Authorize]
@@ -31,38 +33,40 @@ namespace WebAPI_JWT_Auth.Controllers
         }
 
         [HttpPost("register")]
-        public async Task<ActionResult<User>> Register(UserDTO request)
+        public async Task<ActionResult<User>> Register(UserDTO userRequest)
         {
-            var foundUser = users.Find(u => u.UserName == request.UserName);
+            var foundUser = await _dataContext.Users.FirstOrDefaultAsync(u => u.UserName == userRequest.UserName);
             if (foundUser != null)
             {
                 return BadRequest("User name already exists.");
             }
 
-            CreatePasswordHash(request.Password, out byte[] passwordHash, out byte[] passwordSalt);
+            CreatePasswordHash(userRequest.Password, out byte[] passwordHash, out byte[] passwordSalt);
 
+            //var users = await _dataContext.Users.ToListAsync();
+            //var lastIndex = users.Count() - 1;
             var user = new User();
-            var indexId = users.Count() - 1;
-            user.Id = indexId < 0 ? 1 : users[indexId].Id + 1;
-            user.UserName = request.UserName;
+            //user.Id = lastIndex < 0 ? 1 : users[lastIndex].Id + 1;
+            user.UserName = userRequest.UserName;
             user.PasswordHash = passwordHash;
             user.PasswordSalt = passwordSalt;
 
-            users.Add(user);
+            _dataContext.Users.Add(user);
+            await _dataContext.SaveChangesAsync();
 
             return Ok(user);
         }
 
         [HttpPost("login")]
-        public async Task<ActionResult<string>> Login(UserDTO request)
+        public async Task<ActionResult<string>> Login(UserDTO userRequest)
         {
-            var foundUser = users.Find(u => u.UserName == request.UserName);
+            var foundUser = await _dataContext.Users.FirstOrDefaultAsync(u => u.UserName == userRequest.UserName);
             if (foundUser == null)
             {
                 return BadRequest("User not found.");
             }
 
-            if (!VerifyPasswordHash(request.Password, foundUser.PasswordHash, foundUser.PasswordSalt))
+            if (!VerifyPasswordHash(userRequest.Password, foundUser.PasswordHash, foundUser.PasswordSalt))
             {
                 return BadRequest("Wrong password.");
             }
@@ -75,7 +79,7 @@ namespace WebAPI_JWT_Auth.Controllers
         [HttpGet("userbyid/{id}")]
         public async Task<ActionResult<User>> UserById(int id)
         {
-            var foundUser = users.Find(u => u.Id == id);
+            var foundUser = await _dataContext.Users.FindAsync(id);
             if (foundUser == null)
             {
                 return BadRequest("User not found.");
@@ -86,7 +90,7 @@ namespace WebAPI_JWT_Auth.Controllers
         [HttpPut("useredit")]
         public async Task<ActionResult<User>> UserEdit(UserDTO user)
         {
-            var foundUser = users.Find(u => u.Id == user.Id);
+            var foundUser = await _dataContext.Users.FindAsync(user.Id);
             if (foundUser == null)
             {
                 return BadRequest("User not found.");
@@ -98,26 +102,30 @@ namespace WebAPI_JWT_Auth.Controllers
             foundUser.PasswordHash = passwordHash;
             foundUser.PasswordSalt = passwordSalt;
 
+            await _dataContext.SaveChangesAsync();
+
             return Ok(foundUser);
         }
 
         [HttpDelete("userdelete/{id}")]
         public async Task<ActionResult<object>> UserDelete(int id)
         {
-            var foundUser = users.Find(u => u.Id == id);
+            var foundUser = await _dataContext.Users.FindAsync(id);
             if (foundUser == null)
             {
                 return BadRequest("User not found.");
             }
 
-            users.Remove(foundUser);
+            _dataContext.Users.Remove(foundUser);
+            await _dataContext.SaveChangesAsync();
+
             return Ok(new { msg = "User Deleted.", user = foundUser });
         }
 
         [HttpGet("userslist")]
         public async Task<ActionResult<List<User>>> UsersList()
         {
-            return Ok(users);
+            return Ok(await _dataContext.Users.ToListAsync());
         }
         private string CreateToken(User user)
         {
