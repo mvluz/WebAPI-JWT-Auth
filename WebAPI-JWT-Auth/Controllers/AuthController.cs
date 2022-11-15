@@ -43,10 +43,7 @@ namespace WebAPI_JWT_Auth.Controllers
 
             CreatePasswordHash(userRequest.Password, out byte[] passwordHash, out byte[] passwordSalt);
 
-            //var users = await _dataContext.Users.ToListAsync();
-            //var lastIndex = users.Count() - 1;
             var user = new User();
-            //user.Id = lastIndex < 0 ? 1 : users[lastIndex].Id + 1;
             user.UserName = userRequest.UserName;
             user.PasswordHash = passwordHash;
             user.PasswordSalt = passwordSalt;

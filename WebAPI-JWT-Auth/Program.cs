@@ -43,6 +43,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = false
         };
     });
+builder.Services.AddCors(options => options.AddPolicy(name: builder.Configuration.GetSection("CorsOptions:PolicyOptions:Name").Value,
+    policy =>
+    {
+        policy.WithOrigins(builder.Configuration.GetSection("CorsOptions:PolicyOptions:PolicyURL").Value).AllowAnyMethod().AllowAnyHeader();
+    }));
 
 var app = builder.Build();
 
@@ -52,6 +57,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseCors(builder.Configuration.GetSection("CorsOptions:PolicyOptions:Name").Value);
 
 app.UseHttpsRedirection();
 
