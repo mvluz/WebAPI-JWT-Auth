@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using WebAPI_JWT_Auth.Data.Repositoty;
 
 namespace WebAPI_JWT_Auth.Data
 {
@@ -9,7 +10,7 @@ namespace WebAPI_JWT_Auth.Data
 
         }
 
-        public DbSet<User> Users { get; set; }
+        public DbSet<User> TbUser { get; set; }
 
     }
 }

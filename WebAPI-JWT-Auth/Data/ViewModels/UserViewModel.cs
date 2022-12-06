@@ -1,8 +1,8 @@
-﻿namespace WebAPI_JWT_Auth
+﻿namespace WebAPI_JWT_Auth.Data.ViewModels
 {
-    public class UserDTO
+    public class UserViewModel
     {
-        public int? Id { get; set; }
+        public Guid? Id { get; set; }
         public string UserName { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
     }

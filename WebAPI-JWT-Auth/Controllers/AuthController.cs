@@ -6,6 +6,8 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using WebAPI_JWT_Auth.Data.Repositoty;
+using WebAPI_JWT_Auth.Data.ViewModels;
 
 namespace WebAPI_JWT_Auth.Controllers
 {
@@ -33,9 +35,9 @@ namespace WebAPI_JWT_Auth.Controllers
         }
 
         [HttpPost("register")]
-        public async Task<ActionResult<User>> Register(UserDTO userRequest)
+        public async Task<ActionResult<User>> Register(UserViewModel userRequest)
         {
-            var foundUser = await _dataContext.Users.FirstOrDefaultAsync(u => u.UserName == userRequest.UserName);
+            var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userRequest.UserName);
             if (foundUser != null)
             {
                 return BadRequest("User name already exists.");
@@ -48,16 +50,16 @@ namespace WebAPI_JWT_Auth.Controllers
             user.PasswordHash = passwordHash;
             user.PasswordSalt = passwordSalt;
 
-            _dataContext.Users.Add(user);
+            _dataContext.TbUser.Add(user);
             await _dataContext.SaveChangesAsync();
 
             return Ok(user);
         }
 
         [HttpPost("login")]
-        public async Task<ActionResult<string>> Login(UserDTO userRequest)
+        public async Task<ActionResult<string>> Login(UserViewModel userRequest)
         {
-            var foundUser = await _dataContext.Users.FirstOrDefaultAsync(u => u.UserName == userRequest.UserName);
+            var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userRequest.UserName);
             if (foundUser == null)
             {
                 return BadRequest("User not found.");
@@ -76,7 +78,7 @@ namespace WebAPI_JWT_Auth.Controllers
         [HttpGet("userbyid/{id}")]
         public async Task<ActionResult<User>> UserById(int id)
         {
-            var foundUser = await _dataContext.Users.FindAsync(id);
+            var foundUser = await _dataContext.TbUser.FindAsync(id);
             if (foundUser == null)
             {
                 return BadRequest("User not found.");
@@ -84,10 +86,10 @@ namespace WebAPI_JWT_Auth.Controllers
             return Ok(foundUser);
         }
 
-        [HttpPut("useredit")]
-        public async Task<ActionResult<User>> UserEdit(UserDTO user)
+        [HttpPut("useredit"), Authorize]
+        public async Task<ActionResult<User>> UserEdit(UserViewModel user)
         {
-            var foundUser = await _dataContext.Users.FindAsync(user.Id);
+            var foundUser = await _dataContext.TbUser.FindAsync(user.Id);
             if (foundUser == null)
             {
                 return BadRequest("User not found.");
@@ -104,25 +106,25 @@ namespace WebAPI_JWT_Auth.Controllers
             return Ok(foundUser);
         }
 
-        [HttpDelete("userdelete/{id}")]
+        [HttpDelete("userdelete/{id}"), Authorize]
         public async Task<ActionResult<object>> UserDelete(int id)
         {
-            var foundUser = await _dataContext.Users.FindAsync(id);
+            var foundUser = await _dataContext.TbUser.FindAsync(id);
             if (foundUser == null)
             {
                 return BadRequest("User not found.");
             }
 
-            _dataContext.Users.Remove(foundUser);
+            _dataContext.TbUser.Remove(foundUser);
             await _dataContext.SaveChangesAsync();
 
             return Ok(new { msg = "User Deleted.", user = foundUser });
         }
 
-        [HttpGet("userslist")]
+        [HttpGet("userslist"), Authorize]
         public async Task<ActionResult<List<User>>> UsersList()
         {
-            return Ok(await _dataContext.Users.ToListAsync());
+            return Ok(await _dataContext.TbUser.ToListAsync());
         }
         private string CreateToken(User user)
         {
