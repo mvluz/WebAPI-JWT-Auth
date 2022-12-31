@@ -10,7 +10,7 @@ namespace WebAPI_JWT_Auth.Services
 {
     public interface IUserService
     {
-        public string GetMyName();
+        public Task<User> GetMyName();
 
         public Task<User> UserEdit(UserViewModel userViewModel);
 
@@ -28,7 +28,9 @@ namespace WebAPI_JWT_Auth.Services
 
         public Task<RefreshToken> RefreshToken(UserViewModel userViewModel);
 
-        public string CreateToken(User user);
+        public Task<string> CreateToken(User user);
+
+        public void AppendCookie(HttpResponse response, string refreshToken, DateTime? refreshTokenExpires);
 
     }
 

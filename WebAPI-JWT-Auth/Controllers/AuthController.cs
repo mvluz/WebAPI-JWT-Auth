@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using System.Linq;
 using WebAPI_JWT_Auth.Data.Repositoty;
 using WebAPI_JWT_Auth.Data.ViewModels;
@@ -23,11 +24,15 @@ namespace WebAPI_JWT_Auth.Controllers
         }
 
         [HttpGet, Authorize]
-        public ActionResult<string> GetMe()
+        public async Task<ActionResult<object>> GetMe()
         {
-            var userName = _userService.GetMyName();
+            var foundUser = await _userService.GetMyName();
 
-            return Ok(userName);
+            return Ok(new
+            {
+                foundUser.UserID,
+                foundUser.UserName
+            });
         }
 
         [HttpPost("register")]
@@ -43,37 +48,28 @@ namespace WebAPI_JWT_Auth.Controllers
         }
 
         [HttpPost("login")]
-        public async Task<ActionResult<UserViewModel>> Login(UserViewModel userViewModel)
+        public async Task<ActionResult<object>> Login(UserViewModel userViewModel)
         {
             var userViewModelVerified = await _userService.UserLogin(userViewModel);
-            if (userViewModelVerified.Token == string.Empty)
+            if (userViewModelVerified == null)
             {
                 return BadRequest(_genericErrorMessage);
             }
 
-            var refreshToken = await _userService.RefreshToken(userViewModelVerified);
-
-            if (refreshToken == null)
+            if (userViewModelVerified.Token.IsNullOrEmpty()
+                && userViewModelVerified.RefreshToken.IsNullOrEmpty())
             {
                 return BadRequest(_genericErrorMessage);
             }
 
-            var cookieOptions = new CookieOptions
+            _userService.AppendCookie(Response, userViewModelVerified.RefreshToken, userViewModelVerified.RefreshTokenExpires);
+            
+            return Ok(new
             {
-                HttpOnly = true,
-                Expires = refreshToken.Expires
-            };
-
-            Response.Cookies.Append("refreshToken", refreshToken.Token, cookieOptions);
-
-            var userReturn = new UserViewModel()
-            {
-                UserID = userViewModelVerified.UserID,
-                UserName = userViewModelVerified.UserName,
-                Token = userViewModelVerified.Token
-            };
-
-            return Ok(userReturn);
+                userViewModelVerified.UserID,
+                userViewModelVerified.UserName,
+                userViewModelVerified.Token
+            });
         }
 
         [HttpPost("resfreshtoken"), Authorize]
@@ -81,36 +77,31 @@ namespace WebAPI_JWT_Auth.Controllers
         {
             var refreshTokenRequest = Request.Cookies["refreshToken"];
 
-            var foundUser = await _userService.UserByName(userViewModel.UserName);
-            
-            if (!foundUser.RefreshToken.Equals(refreshTokenRequest))
-            {
-                return BadRequest(_genericErrorMessage);
-            }
-            else if(foundUser.TokenExpires < DateTime.Now)
+            var foundUser = await _userService.UserByID(userViewModel.UserID);
+            if (foundUser == null)
             {
                 return BadRequest(_genericErrorMessage);
             }
 
-            userViewModel.Token = _userService.CreateToken(foundUser);
-            userViewModel.UserID = foundUser.UserID;
+            if (!foundUser.RefreshToken.Equals(refreshTokenRequest)
+                && foundUser.TokenExpires < DateTime.Now)
+            {
+                return BadRequest(_genericErrorMessage);
+            }
 
             var refreshToken = await _userService.RefreshToken(userViewModel);
-
             if (refreshToken == null)
             {
                 return BadRequest(_genericErrorMessage);
             }
 
-            var cookieOptions = new CookieOptions
+            _userService.AppendCookie(Response, refreshToken.Token, refreshToken.Expires);
+
+            return Ok(new
             {
-                HttpOnly = true,
-                Expires = refreshToken.Expires
-            };
-
-            Response.Cookies.Append("refreshToken", refreshToken.Token, cookieOptions);
-
-            return Ok(userViewModel);
+                userViewModel.UserID,
+                userViewModel.UserName
+            });
         }
 
         [HttpGet("userbyid/{id}"), Authorize]

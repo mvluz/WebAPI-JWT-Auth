@@ -23,14 +23,15 @@ namespace WebAPI_JWT_Auth.Services
             _dataContext = dataContext;
         }
 
-        public string GetMyName()
-        {
-            var result = string.Empty;
-            if(_httpContextAccessor.HttpContext != null)
+        public async Task<User> GetMyName()
+        {           
+            if (_httpContextAccessor.HttpContext == null)
             {
-                result = _httpContextAccessor.HttpContext.User.FindFirstValue(ClaimTypes.Name);
+                return null;
             }
-            return result;
+            var userName = _httpContextAccessor.HttpContext.User.FindFirstValue(ClaimTypes.Name);
+
+            return await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userName);
         }
 
         public async Task<User> UserRegister (UserViewModel userViewModel)
@@ -77,7 +78,12 @@ namespace WebAPI_JWT_Auth.Services
         public async Task<UserViewModel> UserLogin (UserViewModel userViewModel)
         {
             var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userViewModel.UserName);
-            if (foundUser == null)
+            if (foundUser == null )
+            {
+                return null;
+            }
+
+            if (foundUser.LoginAttempt > 3 && foundUser.UserVerifiedAt == null)
             {
                 return null;
             }
@@ -86,14 +92,21 @@ namespace WebAPI_JWT_Auth.Services
             {
                 return null;
             }
-
-            string token = CreateToken(foundUser);
-
+            
+            string token = await CreateToken(foundUser);
             userViewModel.Token = token;
             userViewModel.UserID = foundUser.UserID;
 
-            return userViewModel;
+            var refreshToken = await RefreshToken(userViewModel);
 
+            if (refreshToken == null)
+            {
+                return null;
+            }
+
+            userViewModel.RefreshToken = refreshToken.Token;
+
+            return userViewModel;
         }
 
         public async Task<object>UserDelete (Guid userID)
@@ -109,6 +122,7 @@ namespace WebAPI_JWT_Auth.Services
 
             return new { msg = "User Deleted.", user = foundUser };
         }
+
         public async Task<User> UserByID (Guid userID)
         {
             var foundUser = await _dataContext.TbUser.FindAsync(userID);
@@ -135,8 +149,14 @@ namespace WebAPI_JWT_Auth.Services
         {
             return await _dataContext.TbUser.ToListAsync();
         }
-        public string CreateToken(User user)
+        public async Task<string> CreateToken(User user)
         {
+            var foundUser = await _dataContext.TbUser.FindAsync(user.UserID);
+            if (foundUser == null)
+            {
+                return null;
+            }
+
             List<Claim> claims = new List<Claim>
             {
                 new Claim(ClaimTypes.Name, user.UserName),
@@ -148,13 +168,21 @@ namespace WebAPI_JWT_Auth.Services
 
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
 
+            var expires = DateTime.Now.AddHours(8);
+
             var token = new JwtSecurityToken(
                 claims: claims,
-                expires: DateTime.Now.AddHours(8),
+                expires: expires,
                 signingCredentials: creds
                 );
 
             var jwt = new JwtSecurityTokenHandler().WriteToken(token);
+
+            foundUser.Token = jwt;
+            foundUser.TokenCreatedAt = DateTime.Now;
+            foundUser.TokenExpires = expires;
+
+            await _dataContext.SaveChangesAsync();
 
             return jwt;
         }
@@ -192,12 +220,23 @@ namespace WebAPI_JWT_Auth.Services
             };
 
             foundUser.RefreshToken = refreshToken.Token;
-            foundUser.TokenCreatedAt = refreshToken.Created;
-            foundUser.TokenExpires = refreshToken.Expires;
+            foundUser.RefreshTokenCreatedAt = refreshToken.Created;
+            foundUser.RefreshTokenExpires = refreshToken.Expires;
 
             await _dataContext.SaveChangesAsync();
 
             return refreshToken;
+        }
+
+        public void AppendCookie(HttpResponse response, string refreshToken, DateTime? refreshTokenExpires) 
+        {
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Expires = refreshTokenExpires
+            };
+
+            response.Cookies.Append("refreshToken", refreshToken, cookieOptions);
         }
     }
 }
