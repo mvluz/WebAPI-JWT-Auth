@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -55,7 +56,7 @@ namespace WebAPI_JWT_Auth.Services
  
         public async Task<User> UserEdit(UserViewModel userViewModel)
         {
-            var foundUser = await _dataContext.TbUser.FindAsync(userViewModel.Id);
+            var foundUser = await _dataContext.TbUser.FindAsync(userViewModel.UserID);
             if (foundUser == null)
             {
                 return null;
@@ -73,7 +74,7 @@ namespace WebAPI_JWT_Auth.Services
 
         }
 
-        public async Task<string> UserLogin (UserViewModel userViewModel)
+        public async Task<UserViewModel> UserLogin (UserViewModel userViewModel)
         {
             var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userViewModel.UserName);
             if (foundUser == null)
@@ -88,7 +89,10 @@ namespace WebAPI_JWT_Auth.Services
 
             string token = CreateToken(foundUser);
 
-            return token;
+            userViewModel.Token = token;
+            userViewModel.UserID = foundUser.UserID;
+
+            return userViewModel;
 
         }
 
@@ -116,11 +120,22 @@ namespace WebAPI_JWT_Auth.Services
             return foundUser;
         }
 
+        public async Task<User> UserByName(string userName)
+        {
+            var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userName);
+            if (foundUser == null)
+            {
+                return null;
+            }
+
+            return foundUser;
+        }
+
         public async Task<List<User>> UsersList()
         {
             return await _dataContext.TbUser.ToListAsync();
         }
-        private string CreateToken(User user)
+        public string CreateToken(User user)
         {
             List<Claim> claims = new List<Claim>
             {
@@ -162,5 +177,27 @@ namespace WebAPI_JWT_Auth.Services
             }
         }
 
+        public async Task<RefreshToken> RefreshToken(UserViewModel userViewModel) 
+        {
+            var foundUser = await _dataContext.TbUser.FindAsync(userViewModel.UserID);
+            if (foundUser == null)
+            {
+                return null;
+            }
+
+            var refreshToken = new RefreshToken {
+            Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
+            Expires = DateTime.Now.AddHours(3),
+            Created = DateTime.Now
+            };
+
+            foundUser.RefreshToken = refreshToken.Token;
+            foundUser.TokenCreatedAt = refreshToken.Created;
+            foundUser.TokenExpires = refreshToken.Expires;
+
+            await _dataContext.SaveChangesAsync();
+
+            return refreshToken;
+        }
     }
 }

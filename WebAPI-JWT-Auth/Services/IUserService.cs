@@ -16,13 +16,19 @@ namespace WebAPI_JWT_Auth.Services
 
         public Task<User> UserRegister(UserViewModel userViewModel);
 
-        public Task<string> UserLogin(UserViewModel userViewModel);
+        public Task<UserViewModel> UserLogin(UserViewModel userViewModel);
 
         public Task<object> UserDelete(Guid userID);
 
         public Task<User> UserByID(Guid userID);
 
+        public Task<User> UserByName(string userName);
+
         public Task<List<User>> UsersList();
+
+        public Task<RefreshToken> RefreshToken(UserViewModel userViewModel);
+
+        public string CreateToken(User user);
 
     }
 
