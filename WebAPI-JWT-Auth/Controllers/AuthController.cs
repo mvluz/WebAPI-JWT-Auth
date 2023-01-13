@@ -72,6 +72,23 @@ namespace WebAPI_JWT_Auth.Controllers
             });
         }
 
+        [HttpPost("verify")]
+        public async Task<ActionResult<object>> Verify(string verifyToken)
+        {
+            var userViewModelVerified = await _userService.UserVerify(verifyToken);
+            if (userViewModelVerified == null)
+            {
+                return BadRequest(_genericErrorMessage);
+            }
+
+            return Ok(new
+            {
+                userViewModelVerified.UserID,
+                userViewModelVerified.UserName,
+                message = $@"User {userViewModelVerified.UserName} Verified."
+            });
+        }
+
         [HttpPost("resfreshtoken"), Authorize]
         public async Task<ActionResult<UserViewModel>> RefreshToken(UserViewModel userViewModel)
         {

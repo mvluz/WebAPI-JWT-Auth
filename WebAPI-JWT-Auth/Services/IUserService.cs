@@ -18,6 +18,8 @@ namespace WebAPI_JWT_Auth.Services
 
         public Task<UserViewModel> UserLogin(UserViewModel userViewModel);
 
+        public Task<UserViewModel> UserVerify(string verfiyToken);
+
         public Task<object> UserDelete(Guid userID);
 
         public Task<User> UserByID(Guid userID);
@@ -28,7 +30,7 @@ namespace WebAPI_JWT_Auth.Services
 
         public Task<RefreshToken> RefreshToken(UserViewModel userViewModel);
 
-        public Task<string> CreateToken(User user);
+        public Task<string> CreateToken(User user, string type);
 
         public void AppendCookie(HttpResponse response, string refreshToken, DateTime? refreshTokenExpires);
 

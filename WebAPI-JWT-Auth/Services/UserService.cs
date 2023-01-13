@@ -34,7 +34,7 @@ namespace WebAPI_JWT_Auth.Services
             return await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userName);
         }
 
-        public async Task<User> UserRegister (UserViewModel userViewModel)
+        public async Task<User> UserRegister(UserViewModel userViewModel)
         {
             var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userViewModel.UserName);
             if (foundUser != null)
@@ -44,12 +44,27 @@ namespace WebAPI_JWT_Auth.Services
 
             CreatePasswordHash(userViewModel.Password, out byte[] passwordHash, out byte[] passwordSalt);
 
-            var user = new User();
-            user.UserName = userViewModel.UserName;
-            user.PasswordHash = passwordHash;
-            user.PasswordSalt = passwordSalt;
+            var user = new User()
+            {
+                UserName = userViewModel.UserName,
+                UserEmail = userViewModel.UserEmail,
+                PasswordHash = passwordHash,
+                PasswordSalt = passwordSalt,
+                UserCreatedAt = DateTime.Now,
+                UserModifiedAt = DateTime.Now
+            };
+            
 
             _dataContext.TbUser.Add(user);
+            await _dataContext.SaveChangesAsync();
+
+            foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userViewModel.UserName);
+            if (foundUser == null)
+            {
+                return null;
+            }
+
+            foundUser.VerificationToken = await CreateToken(foundUser,"V");
             await _dataContext.SaveChangesAsync();
 
             return user;
@@ -83,7 +98,7 @@ namespace WebAPI_JWT_Auth.Services
                 return null;
             }
 
-            if (foundUser.LoginAttempt > 3 && foundUser.UserVerifiedAt == null)
+            if (foundUser.LoginAttempt > 3 || foundUser.UserVerifiedAt == null)
             {
                 return null;
             }
@@ -105,6 +120,28 @@ namespace WebAPI_JWT_Auth.Services
             }
 
             userViewModel.RefreshToken = refreshToken.Token;
+
+            return userViewModel;
+        }
+
+        public async Task<UserViewModel> UserVerify(string verfiyToken)
+        {
+            var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(
+                u => u.VerificationToken.Equals(verfiyToken)
+                && u.UserVerifiedAt == null 
+                && u.VerificationTokenExpires > DateTime.Now);
+            if (foundUser == null)
+            {
+                return null;
+            }
+
+            foundUser.UserVerifiedAt = DateTime.Now;
+            await _dataContext.SaveChangesAsync();
+
+            var userViewModel = new UserViewModel() {                
+                UserID = foundUser.UserID,
+                UserName = foundUser.UserName
+            };
 
             return userViewModel;
         }
@@ -149,7 +186,7 @@ namespace WebAPI_JWT_Auth.Services
         {
             return await _dataContext.TbUser.ToListAsync();
         }
-        public async Task<string> CreateToken(User user)
+        public async Task<string> CreateToken(User user, string type="L")
         {
             var foundUser = await _dataContext.TbUser.FindAsync(user.UserID);
             if (foundUser == null)
@@ -178,15 +215,60 @@ namespace WebAPI_JWT_Auth.Services
 
             var jwt = new JwtSecurityTokenHandler().WriteToken(token);
 
-            foundUser.Token = jwt;
-            foundUser.TokenCreatedAt = DateTime.Now;
-            foundUser.TokenExpires = expires;
+            if (type == "V")
+            {
+                foundUser.VerificationToken = jwt;
+                foundUser.VerificationTokenCreatedAt = DateTime.Now;
+                foundUser.VerificationTokenExpires = expires;
+            }
+            else
+            {
+                foundUser.Token = jwt;
+                foundUser.TokenCreatedAt = DateTime.Now;
+                foundUser.TokenExpires = expires;
+            }
 
             await _dataContext.SaveChangesAsync();
 
             return jwt;
         }
+        public async Task<string> CreateVerificationToken(User user)
+        {
+            var foundUser = await _dataContext.TbUser.FindAsync(user.UserID);
+            if (foundUser == null)
+            {
+                return null;
+            }
 
+            List<Claim> claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.Name, user.UserName),
+                new Claim(ClaimTypes.Role, "Admin")
+            };
+
+            var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(
+                _configuration.GetSection("AppSettings:Token").Value));
+
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
+
+            var expires = DateTime.Now.AddHours(8);
+
+            var token = new JwtSecurityToken(
+                claims: claims,
+                expires: expires,
+                signingCredentials: creds
+                );
+
+            var jwt = new JwtSecurityTokenHandler().WriteToken(token);
+
+            foundUser.VerificationToken = jwt;
+            foundUser.VerificationTokenCreatedAt = DateTime.Now;
+            foundUser.VerificationTokenExpires = expires;
+
+            await _dataContext.SaveChangesAsync();
+
+            return jwt;
+        }
         private void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordSalt)
         {
             using (var hmac = new HMACSHA512())
