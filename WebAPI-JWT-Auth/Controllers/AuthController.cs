@@ -89,6 +89,41 @@ namespace WebAPI_JWT_Auth.Controllers
             });
         }
 
+        [HttpPost("forgotpassaword")]
+        public async Task<ActionResult<object>> ForgotPassword(UserViewModel userViewModel)
+        {
+            var foundUser = await _userService.ForgotPassword(userViewModel);
+            if (foundUser == null)
+            {
+                return BadRequest(_genericErrorMessage);
+            }
+
+            return Ok(new
+            {
+                foundUser.UserID,
+                foundUser.UserName,
+                message = $@"Check your email to Reset Passaword."
+            });
+        }
+
+        [HttpPost("resetpassword")]
+        public async Task<ActionResult<object>> ResetPassword(UserViewModel userViewModel)
+        {
+            var foundUser = await _userService.ResetPassword(userViewModel);
+            if (foundUser == null)
+            {
+                return BadRequest(_genericErrorMessage);
+            }
+
+            return Ok(new
+            {
+                foundUser.UserID,
+                foundUser.UserName,
+                message = $@"Password changed with Success."
+            });
+        }
+
+
         [HttpPost("resfreshtoken"), Authorize]
         public async Task<ActionResult<UserViewModel>> RefreshToken(UserViewModel userViewModel)
         {

@@ -20,17 +20,21 @@ namespace WebAPI_JWT_Auth.Services
 
         public Task<UserViewModel> UserVerify(string verfiyToken);
 
+        public Task<User> ForgotPassword(UserViewModel userViewModel);
+
+        public Task<User> ResetPassword(UserViewModel userViewModel);
+
         public Task<object> UserDelete(Guid userID);
 
         public Task<User> UserByID(Guid userID);
 
-        public Task<User> UserByName(string userName);
+        public Task<User> UserByUserName(string userName);
 
         public Task<List<User>> UsersList();
 
         public Task<RefreshToken> RefreshToken(UserViewModel userViewModel);
 
-        public Task<string> CreateToken(User user, string type);
+        public Task<string> CreateToken(User user);
 
         public void AppendCookie(HttpResponse response, string refreshToken, DateTime? refreshTokenExpires);
 

@@ -14,7 +14,7 @@ namespace WebAPI_JWT_Auth.Services
     public class UserService : IUserService
     {
         private readonly IHttpContextAccessor _httpContextAccessor;
-        private readonly IConfiguration _configuration; 
+        private readonly IConfiguration _configuration;
         private readonly DataContext _dataContext;
         public UserService(IHttpContextAccessor httpContextAccessor, IConfiguration configuration, DataContext dataContext)
         {
@@ -24,7 +24,7 @@ namespace WebAPI_JWT_Auth.Services
         }
 
         public async Task<User> GetMyName()
-        {           
+        {
             if (_httpContextAccessor.HttpContext == null)
             {
                 return null;
@@ -51,25 +51,18 @@ namespace WebAPI_JWT_Auth.Services
                 PasswordHash = passwordHash,
                 PasswordSalt = passwordSalt,
                 UserCreatedAt = DateTime.Now,
-                UserModifiedAt = DateTime.Now
+                UserModifiedAt = DateTime.Now,
+                VerificationToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(64)),
+                VerificationTokenCreatedAt = DateTime.Now,
+                VerificationTokenExpires = DateTime.Now.AddHours(8)
             };
-            
 
             _dataContext.TbUser.Add(user);
             await _dataContext.SaveChangesAsync();
 
-            foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userViewModel.UserName);
-            if (foundUser == null)
-            {
-                return null;
-            }
-
-            foundUser.VerificationToken = await CreateToken(foundUser,"V");
-            await _dataContext.SaveChangesAsync();
-
             return user;
         }
- 
+
         public async Task<User> UserEdit(UserViewModel userViewModel)
         {
             var foundUser = await _dataContext.TbUser.FindAsync(userViewModel.UserID);
@@ -83,6 +76,7 @@ namespace WebAPI_JWT_Auth.Services
             foundUser.UserName = userViewModel.UserName;
             foundUser.PasswordHash = passwordHash;
             foundUser.PasswordSalt = passwordSalt;
+            foundUser.UserModifiedAt = DateTime.Now;
 
             await _dataContext.SaveChangesAsync();
 
@@ -90,10 +84,10 @@ namespace WebAPI_JWT_Auth.Services
 
         }
 
-        public async Task<UserViewModel> UserLogin (UserViewModel userViewModel)
+        public async Task<UserViewModel> UserLogin(UserViewModel userViewModel)
         {
             var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userViewModel.UserName);
-            if (foundUser == null )
+            if (foundUser == null)
             {
                 return null;
             }
@@ -107,7 +101,7 @@ namespace WebAPI_JWT_Auth.Services
             {
                 return null;
             }
-            
+
             string token = await CreateToken(foundUser);
             userViewModel.Token = token;
             userViewModel.UserID = foundUser.UserID;
@@ -128,7 +122,7 @@ namespace WebAPI_JWT_Auth.Services
         {
             var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(
                 u => u.VerificationToken.Equals(verfiyToken)
-                && u.UserVerifiedAt == null 
+                && u.UserVerifiedAt == null
                 && u.VerificationTokenExpires > DateTime.Now);
             if (foundUser == null)
             {
@@ -136,9 +130,13 @@ namespace WebAPI_JWT_Auth.Services
             }
 
             foundUser.UserVerifiedAt = DateTime.Now;
+            foundUser.VerificationToken = string.Empty;
+            foundUser.UserModifiedAt = DateTime.Now;
+
             await _dataContext.SaveChangesAsync();
 
-            var userViewModel = new UserViewModel() {                
+            var userViewModel = new UserViewModel()
+            {
                 UserID = foundUser.UserID,
                 UserName = foundUser.UserName
             };
@@ -146,7 +144,44 @@ namespace WebAPI_JWT_Auth.Services
             return userViewModel;
         }
 
-        public async Task<object>UserDelete (Guid userID)
+        public async Task<User> ForgotPassword(UserViewModel userViewModel)
+        {
+            var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName.Equals(userViewModel.UserName));
+            if (foundUser == null)
+            {
+                return null;
+            }
+
+            foundUser.UserModifiedAt = DateTime.Now;
+            foundUser.PasswordResetToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(64));
+            foundUser.ResetTokenExpires = DateTime.Now.AddHours(8);
+            foundUser.UserModifiedAt = DateTime.Now;
+
+            await _dataContext.SaveChangesAsync();
+
+            return foundUser;
+        }
+
+        public async Task<User> ResetPassword(UserViewModel userViewModel)
+        {
+            var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.PasswordResetToken == userViewModel.PasswordResetToken);
+            if (foundUser == null || foundUser.ResetTokenExpires < DateTime.Now)
+            {
+                return null;
+            }
+
+            CreatePasswordHash(userViewModel.Password, out byte[] passwordHash, out byte[] passwordSalt);
+
+            foundUser.PasswordHash = passwordHash;
+            foundUser.PasswordSalt = passwordSalt;
+            foundUser.PasswordResetToken = string.Empty;
+            foundUser.UserModifiedAt = DateTime.Now;
+
+            await _dataContext.SaveChangesAsync();
+
+            return foundUser;
+        }
+        public async Task<object> UserDelete(Guid userID)
         {
             var foundUser = await _dataContext.TbUser.FindAsync(userID);
             if (foundUser == null)
@@ -160,7 +195,7 @@ namespace WebAPI_JWT_Auth.Services
             return new { msg = "User Deleted.", user = foundUser };
         }
 
-        public async Task<User> UserByID (Guid userID)
+        public async Task<User> UserByID(Guid userID)
         {
             var foundUser = await _dataContext.TbUser.FindAsync(userID);
             if (foundUser == null)
@@ -171,7 +206,7 @@ namespace WebAPI_JWT_Auth.Services
             return foundUser;
         }
 
-        public async Task<User> UserByName(string userName)
+        public async Task<User> UserByUserName(string userName)
         {
             var foundUser = await _dataContext.TbUser.FirstOrDefaultAsync(u => u.UserName == userName);
             if (foundUser == null)
@@ -186,7 +221,7 @@ namespace WebAPI_JWT_Auth.Services
         {
             return await _dataContext.TbUser.ToListAsync();
         }
-        public async Task<string> CreateToken(User user, string type="L")
+        public async Task<string> CreateToken(User user)
         {
             var foundUser = await _dataContext.TbUser.FindAsync(user.UserID);
             if (foundUser == null)
@@ -215,18 +250,10 @@ namespace WebAPI_JWT_Auth.Services
 
             var jwt = new JwtSecurityTokenHandler().WriteToken(token);
 
-            if (type == "V")
-            {
-                foundUser.VerificationToken = jwt;
-                foundUser.VerificationTokenCreatedAt = DateTime.Now;
-                foundUser.VerificationTokenExpires = expires;
-            }
-            else
-            {
-                foundUser.Token = jwt;
-                foundUser.TokenCreatedAt = DateTime.Now;
-                foundUser.TokenExpires = expires;
-            }
+            foundUser.Token = jwt;
+            foundUser.TokenCreatedAt = DateTime.Now;
+            foundUser.TokenExpires = expires;
+            foundUser.UserModifiedAt = DateTime.Now;
 
             await _dataContext.SaveChangesAsync();
 
@@ -264,6 +291,7 @@ namespace WebAPI_JWT_Auth.Services
             foundUser.VerificationToken = jwt;
             foundUser.VerificationTokenCreatedAt = DateTime.Now;
             foundUser.VerificationTokenExpires = expires;
+            foundUser.UserModifiedAt = DateTime.Now;
 
             await _dataContext.SaveChangesAsync();
 
@@ -287,7 +315,7 @@ namespace WebAPI_JWT_Auth.Services
             }
         }
 
-        public async Task<RefreshToken> RefreshToken(UserViewModel userViewModel) 
+        public async Task<RefreshToken> RefreshToken(UserViewModel userViewModel)
         {
             var foundUser = await _dataContext.TbUser.FindAsync(userViewModel.UserID);
             if (foundUser == null)
@@ -295,22 +323,24 @@ namespace WebAPI_JWT_Auth.Services
                 return null;
             }
 
-            var refreshToken = new RefreshToken {
-            Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
-            Expires = DateTime.Now.AddHours(3),
-            Created = DateTime.Now
+            var refreshToken = new RefreshToken
+            {
+                Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
+                Expires = DateTime.Now.AddHours(3),
+                Created = DateTime.Now
             };
 
             foundUser.RefreshToken = refreshToken.Token;
             foundUser.RefreshTokenCreatedAt = refreshToken.Created;
             foundUser.RefreshTokenExpires = refreshToken.Expires;
+            foundUser.UserModifiedAt = DateTime.Now;
 
             await _dataContext.SaveChangesAsync();
 
             return refreshToken;
         }
 
-        public void AppendCookie(HttpResponse response, string refreshToken, DateTime? refreshTokenExpires) 
+        public void AppendCookie(HttpResponse response, string refreshToken, DateTime? refreshTokenExpires)
         {
             var cookieOptions = new CookieOptions
             {
